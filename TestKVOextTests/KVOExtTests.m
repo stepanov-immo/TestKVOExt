@@ -150,6 +150,7 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
 @end
 
 @interface Listener ()
+@property (nonatomic) NSString* str;
 @property (nonatomic) id key;
 @end
 @implementation Listener
@@ -208,6 +209,13 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
     };
 }
 
+-(void)bindSelf {
+    bind(self, str) {
+        NSLog(@"-> %@", value);
+        HandleCounter++;
+    };
+}
+
 -(void)nestedBindSource:(Source*)src {
     
     bind(src, str) {
@@ -243,6 +251,13 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
 
 -(void)observeSourceClass {
     observe(Source, str) {
+        NSLog(@"-> %@", value);
+        HandleCounter++;
+    };
+}
+
+-(void)bindDynamic {
+    bindx(str) {
         NSLog(@"-> %@", value);
         HandleCounter++;
     };
@@ -369,6 +384,25 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
     src.str = @"hello2";
     AssertHandleCounter(1);
 }
+
+- (void)testBindSelf {
+    Listener* listener = [Listener new];
+    
+    [listener bindSelf];
+    AssertBindingCounter(1);
+    AssertHandleCounter(1);
+    
+    listener.str = @"hello";
+    AssertHandleCounter(2);
+
+    [listener bindSelf];
+    AssertBindingCounter(1);
+    AssertHandleCounter(3);
+    
+    listener.str = @"hello";
+    AssertHandleCounter(4);
+}
+
 
 - (void)testBindAgain {
     Source* src = [Source new];
@@ -659,6 +693,30 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
     listener.dataContext = src;
     src.str = @"hello";
     AssertHandleCounter(0);
+}
+
+-(void)testDataContextAfterDynamicBind {
+    Source* src = [Source new];
+    Listener* listener = [Listener new];
+    
+    [listener bindDynamic];
+    AssertBindingCounter(1);
+    AssertHandleCounter(0);
+    
+    src.str = @"hello";
+    AssertHandleCounter(0);
+    
+    listener.dataContext = src;
+    AssertHandleCounter(1);
+    
+    src.str = @"hello";
+    AssertHandleCounter(2);
+    
+    listener.dataContext = nil;
+    AssertHandleCounter(2);
+    
+    src.str = @"hello";
+    AssertHandleCounter(2);
 }
 
 @end

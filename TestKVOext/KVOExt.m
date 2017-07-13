@@ -10,8 +10,10 @@
 id _kvoext_source;
 NSString* _kvoext_keyPath;
 BOOL _kvoext_raiseInitial;
+BOOL _kvoext_isLazy;
 const char* _kvoext_argType;
 id _kvoext_bindKey;
+NSInteger _kvoext_line;
 
 
 static const void *ObserverKey = &ObserverKey;
@@ -23,18 +25,24 @@ typedef void(^KVOExtBlock)(id owner, id value);
 static KVOExtBlock typedInvoker(const char* argType, id block);
 
 
+// Source -> Observer -> [keyPath:[]] -> Binding <- [] <- Holder <- Listener
+
+
 #pragma mark - interfaces
 
 @interface KVOExtBinding : NSObject
 {
 @public
     id bindKey;
+    NSInteger line;
+    
     id __weak sourceObserver;
+    BOOL isLazy;
+    
     id __unsafe_unretained owner;
     KVOExtBlock block;
     NSString* keyPath;
     BOOL raiseInitial;
-    BOOL isLazy;
 }
 @end
 
@@ -129,6 +137,13 @@ static KVOExtBlock typedInvoker(const char* argType, id block);
     // raise initial
     if (binding->raiseInitial) {
         id val = [_dataSource valueForKey:keyPath];
+        binding->block(binding->owner, val);
+    }
+}
+
+-(void)updateBinding:(KVOExtBinding*)binding  {
+    if (binding->raiseInitial) {
+        id val = [_dataSource valueForKey:binding->keyPath];
         binding->block(binding->owner, val);
     }
 }
@@ -235,6 +250,26 @@ static KVOExtBlock typedInvoker(const char* argType, id block);
     return self;
 }
 
+-(KVOExtBinding*)findByLine:(NSInteger)line {
+    for (KVOExtBinding* binding in _bindings) {
+        if (binding->line == line) {
+            
+            return binding;
+        }
+    }
+    return nil;
+}
+
+-(KVOExtBinding*)findByLine:(NSInteger)line andObserver:(id)observer {
+    for (KVOExtBinding* binding in _bindings) {
+        if (binding->line == line &&
+            binding->sourceObserver == observer) {
+            return binding;
+        }
+    }
+    return nil;
+}
+
 -(KVOExtBinding*)removeBindingForKey:(id)key {
     for (KVOExtBinding* binding in _bindings) {
         if ([binding->bindKey isEqual:key]) {
@@ -277,59 +312,84 @@ static KVOExtBlock typedInvoker(const char* argType, id block);
 
 @implementation NSObject (KVOExt)
 
+// get or create
+-(KVOExtObserver*)_kvoext_observer {
+    KVOExtObserver* observer = objc_getAssociatedObject(self, ObserverKey);
+    if (observer == nil) {
+        observer = [[KVOExtObserver alloc] initWithDataSource:self];
+        objc_setAssociatedObject(self, ObserverKey, observer, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    return observer;
+}
+
 -(void)set_kvoext_block:(id)block {
-    assert(block != nil);
     
-    id bindKey = [_kvoext_bindKey copy];
-    
-    // block
-    KVOExtBlock block1 = _kvoext_argType != NULL ? typedInvoker(_kvoext_argType, block) : (KVOExtBlock)block;
-
-    
-    // bindings holder
-    KVOExtHolder* holder = objc_getAssociatedObject(self, HolderKey);
-    if (holder == nil) {
-        holder = [KVOExtHolder new];
-        objc_setAssociatedObject(self, HolderKey, holder, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    
-    // find binding by key
-    // remove binding from old source
-    KVOExtBinding* binding = [holder removeBindingForKey:bindKey];
-    
-    // create and add to binding list
-    if (binding == nil) {
-        binding = [KVOExtBinding new];
-        binding->bindKey = bindKey;
-        binding->owner = self;
-        [holder->_bindings addObject:binding];
-    }
-    
-    // fill binding
-    binding->block = [block1 copy];
-    binding->keyPath = _kvoext_keyPath; // copy ???
-    binding->raiseInitial = _kvoext_raiseInitial;
-    binding->isLazy = _kvoext_source == nil;
-    binding->sourceObserver = nil;
-
-    
-    // source
-    id source = _kvoext_source ?: objc_getAssociatedObject(self, DataContextKey);
-
-    // source observer
-    if (source != nil) {
-        KVOExtObserver* observer = objc_getAssociatedObject(source, ObserverKey);
-        if (observer == nil) {
-            observer = [[KVOExtObserver alloc] initWithDataSource:source];
-            objc_setAssociatedObject(source, ObserverKey, observer, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    // ensure _kvoext_source not nil if not lazy 
+    if (_kvoext_isLazy || _kvoext_source != nil) {
+        
+        id bindKey = [_kvoext_bindKey copy];
+        
+        // block
+        KVOExtBlock block1 = _kvoext_argType != NULL ? typedInvoker(_kvoext_argType, block) : (KVOExtBlock)block;
+        block1 = [block1 copy];
+        
+        
+        // bindings holder
+        KVOExtHolder* holder = objc_getAssociatedObject(self, HolderKey);
+        if (holder == nil) {
+            holder = [KVOExtHolder new];
+            objc_setAssociatedObject(self, HolderKey, holder, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         
-        binding->sourceObserver = observer;
         
-        // add binding to source
-        [observer addBinding:binding];
+        // source observer
+        id source = _kvoext_source ?: objc_getAssociatedObject(self, DataContextKey);
+        KVOExtObserver* observer = [source _kvoext_observer];
+
+
+        // find binding
+        KVOExtBinding* binding;
+        BOOL replaced = NO;
+        if (bindKey != nil) {
+            binding = [holder removeBindingForKey:bindKey];
+        } else {
+            if (_kvoext_isLazy) {
+                binding = [holder findByLine:_kvoext_line];
+                if (binding != nil) {
+                    assert(binding->sourceObserver == observer);
+                }
+            } else {
+                assert(observer != nil);
+                binding = [holder findByLine:_kvoext_line andObserver:observer];
+            }
+            replaced = binding != nil;
+        }
+        
+        // create and add to binding list
+        if (binding == nil) {
+            binding = [KVOExtBinding new];
+            [holder->_bindings addObject:binding];
+        }
+        
+        // fill binding
+        binding->bindKey = bindKey;
+        binding->line = _kvoext_line;
+        binding->owner = self;
+        binding->block = block1;
+        binding->keyPath = _kvoext_keyPath; // copy ???
+        binding->raiseInitial = _kvoext_raiseInitial;
+        binding->isLazy = _kvoext_isLazy;
+        binding->sourceObserver = observer; // may be nil
+            
+        if (replaced) {
+            // raise initial if needed
+            [observer updateBinding:binding];
+        } else {
+            // add binding to source (if not nil)
+            [observer addBinding:binding];
+        }
+        
     }
-    
     
     // clean
     _kvoext_bindKey = nil;
@@ -337,6 +397,8 @@ static KVOExtBlock typedInvoker(const char* argType, id block);
     _kvoext_keyPath = nil;
     // _kvoext_argType
     // _kvoext_raiseInitial
+    // _kvoext_isLazy
+    // _kvoext_line
 }
 
 -(void)_kvoext_unbind:(id)key {
@@ -376,15 +438,7 @@ static KVOExtBlock typedInvoker(const char* argType, id block);
     
     
     KVOExtObserver* oldObserver = oldDataContext != nil ? objc_getAssociatedObject(oldDataContext, ObserverKey) : nil;
-    
-    KVOExtObserver* observer = nil;
-    if (dataContext != nil) {
-        observer = objc_getAssociatedObject(dataContext, ObserverKey);
-        if (observer == nil) {
-            observer = [[KVOExtObserver alloc] initWithDataSource:dataContext];
-            objc_setAssociatedObject(dataContext, ObserverKey, observer, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-    }
+    KVOExtObserver* observer = [dataContext _kvoext_observer];
     
     
     // shallow copy
