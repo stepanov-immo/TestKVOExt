@@ -18,9 +18,10 @@
 // self.dataContext = src;
 
 // 3. Manual unbinding
-// bind(src, keypath, key) { ... }
+// bind(src1, keypath1, group_key) { ... }
+// bind(src2, keypath2, group_key) { ... }
 // ...
-// unbind(key); // or unbind_all();
+// unbind(group_key);
 
 // 4. Event macros
 // event_prop(loading, BOOL);
@@ -37,7 +38,6 @@
 #define observex(keypath, ...) _observe_dynamic(NO, keypath, ##__VA_ARGS__)
 
 #define unbind(key) [self _kvoext_unbind:key]
-#define unbind_all() [self _kvoext_unbind_all]
 
 #define event_prop(name, ...) @property (nonatomic) _kvoext_macro(name, ##__VA_ARGS__, id) name
 #define event_raise(name, ...) self.name = _kvoext_macro(name, ##__VA_ARGS__, nil)
@@ -55,20 +55,16 @@
 #define _kvoext_macro(_0, X, ...) X
 
 #define _observe_static(initial, src, keypath, ...) \
-_kvoext_bindKey = _kvoext_macro(0, ##__VA_ARGS__, nil); \
-_kvoext_line = __LINE__; \
+_kvoext_groupKey = _kvoext_macro(0, ##__VA_ARGS__, nil); \
 _kvoext_raiseInitial = initial; \
-_kvoext_isLazy = __builtin_choose_expr(__builtin_types_compatible_p(__typeof(src), id), NO, YES); \
-_kvoext_source = __builtin_choose_expr(__builtin_types_compatible_p(__typeof(src), id), [src _kvoext_source], nil); \
+_kvoext_source = [src _kvoext_source]; \
 _kvoext_keyPath = @#keypath; \
 _kvoext_argType = @encode(__typeof([src _kvoext_new].keypath)); \
 self._kvoext_block = ^(__typeof(self) self, __typeof([src _kvoext_new].keypath) value)
 
 #define _observe_dynamic(initial, keypath, ...) \
-_kvoext_bindKey = _kvoext_macro(0, ##__VA_ARGS__, nil); \
-_kvoext_line = __LINE__; \
+_kvoext_groupKey = _kvoext_macro(0, ##__VA_ARGS__, nil); \
 _kvoext_raiseInitial = initial; \
-_kvoext_isLazy = YES; \
 _kvoext_source = nil; \
 _kvoext_keyPath = @#keypath; \
 _kvoext_argType = NULL; \
@@ -77,22 +73,19 @@ self._kvoext_block = ^(__typeof(self) self, id value)
 extern id _kvoext_source;
 extern NSString* _kvoext_keyPath;
 extern BOOL _kvoext_raiseInitial;
-extern BOOL _kvoext_isLazy;
 extern const char* _kvoext_argType;
-extern id _kvoext_bindKey;
-extern NSInteger _kvoext_line;
+extern id _kvoext_groupKey;
 
 @interface NSObject (KVOExtPrivate)
 
 -(void)set_kvoext_block:(id)block;
 -(void)_kvoext_unbind:(id)key;
--(void)_kvoext_unbind_all;
 -(void)set_kvoext_stopObservingBlock:(id)block;
 
 -(instancetype)_kvoext_new; // self
 +(instancetype)_kvoext_new; // [self new]
 
 -(id)_kvoext_source; // self
-+(id)_kvoext_source; // nil
++(id)_kvoext_source; // class
 
 @end

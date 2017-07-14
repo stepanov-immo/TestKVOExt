@@ -131,28 +131,10 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
 
 
 @interface Listener : NSObject
-
--(void)bindSource:(Source*)src;
--(void)observeSource:(Source*)src;
-
--(void)observeSourceWithKey:(Source*)src;
--(void)unbindByKey;
--(void)unbindAll;
-
--(void)observeAllPropTypes:(Source*)src;
-
--(void)nestedBindSource:(Source*)src;
--(void)nestedObserveSource:(Source*)src;
-
--(void)bindSourceClass;
--(void)observeSourceClass;
-
-@end
-
-@interface Listener ()
 @property (nonatomic) NSString* str;
 @property (nonatomic) id key;
 @end
+
 @implementation Listener
 
 -(void)bindSource:(Source*)src {
@@ -180,10 +162,6 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
 
 -(void)unbindByKey {
     unbind(@"my_key");
-}
-
--(void)unbindAll {
-    unbind_all();
 }
 
 -(void)observeAllPropTypes:(Source *)src {
@@ -251,6 +229,13 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
 
 -(void)observeSourceClass {
     observe(Source, str) {
+        NSLog(@"-> %@", value);
+        HandleCounter++;
+    };
+}
+
+-(void)observeSourceClassWithKey {
+    observe(Source, str, @"my_key") {
         NSLog(@"-> %@", value);
         HandleCounter++;
     };
@@ -361,28 +346,41 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
     AssertHandleCounter(1);
     
     [listener unbindByKey];
-    AssertBindingCounter(1);
+    AssertBindingCounter(0);
     AssertHandleCounter(1);
     
     src.str = @"hello2";
     AssertHandleCounter(1);
 }
 
-- (void)testUnbindAll {
+- (void)testUnbindGroup {
     Source* src = [Source new];
     Listener* listener = [Listener new];
     
+    [listener observeSource:src];
+    AssertBindingCounter(1);
+    AssertHandleCounter(0);
+
     [listener observeSourceWithKey:src];
+    AssertBindingCounter(2);
+    AssertHandleCounter(0);
     
     src.str = @"hello";
-    AssertHandleCounter(1);
+    AssertHandleCounter(2);
     
-    [listener unbindAll];
+    [listener observeSourceWithKey:src];
+    AssertBindingCounter(3);
+    AssertHandleCounter(2);
+    
+    src.str = @"hello";
+    AssertHandleCounter(5);
+
+    [listener unbindByKey];
     AssertBindingCounter(1);
-    AssertHandleCounter(1);
+    AssertHandleCounter(5);
     
     src.str = @"hello2";
-    AssertHandleCounter(1);
+    AssertHandleCounter(6);
 }
 
 - (void)testBindSelf {
@@ -396,11 +394,11 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
     AssertHandleCounter(2);
 
     [listener bindSelf];
-    AssertBindingCounter(1);
+    AssertBindingCounter(2);
     AssertHandleCounter(3);
     
     listener.str = @"hello";
-    AssertHandleCounter(4);
+    AssertHandleCounter(5);
 }
 
 
@@ -413,11 +411,11 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
     AssertHandleCounter(1);
     
     [listener bindSource:src];
-    AssertBindingCounter(1);
+    AssertBindingCounter(2);
     AssertHandleCounter(2);
     
     src.str = @"hello";
-    AssertHandleCounter(3);
+    AssertHandleCounter(4);
 }
 
 - (void)testObserveAgain {
@@ -429,11 +427,11 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
     AssertHandleCounter(0);
     
     [listener observeSource:src];
-    AssertBindingCounter(1);
+    AssertBindingCounter(2);
     AssertHandleCounter(0);
     
     src.str = @"hello";
-    AssertHandleCounter(1);
+    AssertHandleCounter(2);
 }
 
 - (void)testListenerRelease {
@@ -484,18 +482,20 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
     AssertHandleCounter(2);
     
     src.str = @"hello";
-    AssertBindingCounter(2);
+    AssertBindingCounter(3);
     AssertHandleCounter(4);
     
     src.intVal = 2;
-    AssertHandleCounter(5);
-    
-    [listener unbindAll];
-    AssertBindingCounter(2);
+    AssertBindingCounter(3);
+    AssertHandleCounter(6);
     
     src.str = @"hello";
+    AssertBindingCounter(4);
+    AssertHandleCounter(8);
+    
     src.intVal = 2;
-    AssertHandleCounter(5);
+    AssertBindingCounter(4);
+    AssertHandleCounter(11);
 }
 
 - (void)testNestedObserve {
@@ -518,12 +518,13 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
     AssertBindingCounter(2);
     AssertHandleCounter(2);
     
-    [listener unbindAll];
-    AssertBindingCounter(2);
-    
     src.str = @"hello";
+    AssertBindingCounter(3);
+    AssertHandleCounter(3);
+
     src.intVal = 2;
-    AssertHandleCounter(2);
+    AssertBindingCounter(3);
+    AssertHandleCounter(5);
 }
 
 - (void)testSeveralSources {
@@ -544,13 +545,6 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
     
     src2.str = @"hello";
     AssertHandleCounter(3);
-    
-    [listener unbindAll];
-    AssertBindingCounter(2);
-    
-    src1.str = @"hello";
-    src2.str = @"hello";
-    AssertHandleCounter(3);
 }
 
 - (void)testSeveralListeners {
@@ -569,15 +563,8 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
     src.str = @"hello";
     AssertHandleCounter(2);
     
-    [listener1 unbindAll];
-    
     src.str = @"hello";
-    AssertHandleCounter(3);
-    
-    [listener2 unbindAll];
-    
-    src.str = @"hello";
-    AssertHandleCounter(3);
+    AssertHandleCounter(4);
 }
 
 -(void)testDataContextAfterBind {
@@ -687,8 +674,8 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
     Source* src = [Source new];
     Listener* listener = [Listener new];
     
-    [listener observeSourceClass];
-    [listener unbindAll];
+    [listener observeSourceClassWithKey];
+    [listener unbindByKey];
     
     listener.dataContext = src;
     src.str = @"hello";
