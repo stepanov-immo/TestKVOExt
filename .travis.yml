@@ -12,18 +12,34 @@ before_script:
 - instruments -s devices
 - export IOS_SIMULATOR_UDID=$(instruments -s devices | grep "iPhone 5s (7.1" | sed -E 's/.*\[([0-9A-F-]+)\].*/\1/g')   # Get the iPhone 5s deviceid
 - echo $IOS_SIMULATOR_UDID
+- screencapture test.jpg
+- ./imgur.sh test.jpg
 - open -b com.apple.iphonesimulator --args -CurrentDeviceUDID $IOS_SIMULATOR_UDID
 
 script:
 - sleep 30  # Wait 30 seconds
 - xcrun simctl list
+- screencapture test.jpg
+- ./imgur.sh test.jpg
 - sleep 30  # Wait 30 seconds
 - xcrun simctl list
+- screencapture test.jpg
+- ./imgur.sh test.jpg
 - sleep 30  # Wait 30 seconds
 - xcrun simctl list
+- screencapture test.jpg
+- ./imgur.sh test.jpg
 - sleep 30  # Wait 30 seconds
 - xcrun simctl list
+- screencapture test.jpg
+- ./imgur.sh test.jpg
 - sleep 30  # Wait 30 seconds
 - xcrun simctl list
+- screencapture test.jpg
+- ./imgur.sh test.jpg
+- sleep 30  # Wait 30 seconds
+- xcrun simctl list
+- screencapture test.jpg
+- ./imgur.sh test.jpg
 #- xcodebuild test -scheme TestKVOext -destination "$DST" 
 
