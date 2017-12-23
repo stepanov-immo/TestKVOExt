@@ -16,6 +16,7 @@ script:
 - ./imgur.sh test.jpg
 - ls /private/tmp/
 - ls /tmp/
+- ls ~/Library/Logs/CoreSimulator
 - export IOS_SIMULATOR_UDID=$(instruments -s devices | grep "iPhone 5s (7.1" | sed -E 's/.*\[([0-9A-F-]+)\].*/\1/g')   # Get the iPhone 5s deviceid
 - echo $IOS_SIMULATOR_UDID
 - open -b com.apple.iphonesimulator --args -CurrentDeviceUDID $IOS_SIMULATOR_UDID
@@ -23,11 +24,8 @@ script:
 - screencapture test.jpg
 - ./imgur.sh test.jpg
 - sleep 30  # Wait 30 seconds
-- screencapture test.jpg
-- ./imgur.sh test.jpg
-- sleep 30  # Wait 30 seconds
-- ls ~/Library/Logs/CoreSimulator
-- open ~/Library/Logs/CoreSimulator/CoreSimulator.log
+#- open ~/Library/Logs/CoreSimulator/CoreSimulator.log
+- tail -30 ~/Library/Logs/CoreSimulator/CoreSimulator.log 
 - screencapture test.jpg
 - ./imgur.sh test.jpg
 #- xcodebuild test -scheme TestKVOext -destination "$DST" 
