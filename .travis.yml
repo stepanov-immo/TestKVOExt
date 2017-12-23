@@ -1,7 +1,18 @@
 language: objective-c
-osx_image: xcode8.3
-xcode_project: TestKVOext.xcodeproj
-xcode_scheme: TestKVOext
+
+matrix:
+  include:
+    - {osx_image: xcode6.4, env: 'DST="name=iPhone 5s,OS=7.1"'} # sdk 8.4
+
+before_script:
+- xcode-select -p
+- xcodebuild -version
+- xcodebuild -showsdks
+- xcrun simctl list
+- instruments -s devices
+- export IOS_SIMULATOR_UDID=$(instruments -s devices | grep "iPhone 5s (7.1" | sed -E 's/.*\[([0-9A-F-]+)\].*/\1/g')   # Get the iPhone 5s deviceid
+- echo $IOS_SIMULATOR_UDID
 
 script:
-- xcodebuild test -project "$TRAVIS_XCODE_PROJECT" -scheme "$TRAVIS_XCODE_SCHEME" -destination "name=iPhone SE" 
+- xcodebuild test -scheme TestKVOext -destination "$DST" 
+

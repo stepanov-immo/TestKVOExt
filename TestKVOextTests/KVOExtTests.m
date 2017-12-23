@@ -1,12 +1,10 @@
 //
-//  KVOExtTests.m
-//  TestKVOext
-//
-//  Created by Alexander Stepanov on 04.07.17.
-//  Copyright © 2017 Mediacom. All rights reserved.
+//  Created by Alexander Stepanov on 18.07.17.
+//  Copyright © 2017 Alexander Stepanov. All rights reserved.
 //
 
 #import <XCTest/XCTest.h>
+#import <UIKit/UIKit.h>
 #import "KVOExt.h"
 #import <objc/runtime.h>
 
@@ -80,7 +78,7 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
 }
 
 -(void)onCreateClass:(NSString*)clsName {
-    if ([self class] == NSClassFromString(clsName)) {
+    if ([clsName isEqualToString:NSStringFromClass([self class])]) {
         NSNumber* x = RefCounters()[clsName] ?: @(0);
         NSInteger count = [x integerValue]+1;
         RefCounters()[clsName] = @(count);
@@ -89,7 +87,7 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
 }
 
 -(void)onRemoveClass:(NSString*)clsName {
-    if ([self class] == NSClassFromString(clsName)) {
+    if ([clsName isEqualToString:NSStringFromClass([self class])]) {
         NSNumber* x = RefCounters()[clsName] ?: @(0);
         NSInteger count = [x integerValue]-1;
         RefCounters()[clsName] = @(count);
@@ -105,6 +103,7 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
 @interface Source : NSObject
 @property (nonatomic) NSString* str;
 
+@property (nonatomic) char chrVal;
 @property (nonatomic) NSInteger intVal;
 @property (nonatomic) double doubleVal;
 @property (nonatomic) CGRect rect;
@@ -133,6 +132,7 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
 @interface Listener : NSObject
 @property (nonatomic) NSString* str;
 @property (nonatomic) id key;
+@property (nonatomic) char chrResult;
 @end
 
 @implementation Listener
@@ -162,6 +162,13 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
 
 -(void)unbindByKey {
     unbind(@"my_key");
+}
+
+-(void)observeChar:(Source *)src {
+    observe(src, chrVal) {
+        NSLog(@"-> %@", @(value));
+        self.chrResult = value;
+    };
 }
 
 -(void)observeAllPropTypes:(Source *)src {
@@ -248,6 +255,21 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
     };
 }
 
+-(void)changeListenersWhileObserving:(Source *)src {
+    
+    __block Listener* current = nil;
+    
+    bind(src, str) {
+        Listener* x = [Listener new];
+        [x observeSource:src];  // add new binding to observer
+        current = x; // old current will be released -> binding removed from observer
+    };
+    
+    for (int i=0; i<20; ++i) {
+        src.str = @"";
+    }
+}
+
 -(void)dealloc {
     NSLog(@"listener dealloc");
 }
@@ -282,7 +304,7 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
     
     for (NSString* clsName in RefCounters()) {
         NSNumber* count = RefCounters()[clsName];
-        XCTAssertEqual([count integerValue], 0);
+        XCTAssertEqual([count integerValue], 0, @"%@", clsName);
     }
 }
 
@@ -360,7 +382,7 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
     [listener observeSource:src];
     AssertBindingCounter(1);
     AssertHandleCounter(0);
-
+    
     [listener observeSourceWithKey:src];
     AssertBindingCounter(2);
     AssertHandleCounter(0);
@@ -374,7 +396,7 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
     
     src.str = @"hello";
     AssertHandleCounter(5);
-
+    
     [listener unbindByKey];
     AssertBindingCounter(1);
     AssertHandleCounter(5);
@@ -392,7 +414,7 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
     
     listener.str = @"hello";
     AssertHandleCounter(2);
-
+    
     [listener bindSelf];
     AssertBindingCounter(2);
     AssertHandleCounter(3);
@@ -521,7 +543,7 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
     src.str = @"hello";
     AssertBindingCounter(3);
     AssertHandleCounter(3);
-
+    
     src.intVal = 2;
     AssertBindingCounter(3);
     AssertHandleCounter(5);
@@ -705,5 +727,23 @@ static void swizzle(Class cls, SEL origSel, SEL swizSel)
     src.str = @"hello";
     AssertHandleCounter(2);
 }
+
+-(void)testCharOn32bit {
+    Source* src = [Source new];
+    Listener* listener = [Listener new];
+    
+    [listener observeChar:src];
+    
+    src.chrVal = 'a';
+    XCTAssertEqual(src.chrVal, listener.chrResult);
+}
+
+-(void)testChangeListenersWhileObserving {
+    Source* src = [Source new];
+    Listener* listener = [Listener new];
+    
+    [listener changeListenersWhileObserving:src];
+}
+
 
 @end
